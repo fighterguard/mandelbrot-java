@@ -5,4 +5,4 @@ Currently there's no animation or color selector functionalities. These will be 
 
 ## Change log
 
-* Version 1.0: All visualization functionality, with multithreaded rendering (using 4 threads)
+* Version 0.1 All visualization functionality, with multithreaded rendering (using 4 threads)
