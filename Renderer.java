@@ -3,6 +3,7 @@ package mandeljava;
 import java.awt.Dimension;
 import java.awt.Graphics;
 import java.awt.image.BufferedImage;
+import java.util.concurrent.ArrayBlockingQueue;
 
 public class Renderer implements Runnable{
   
@@ -11,32 +12,14 @@ public class Renderer implements Runnable{
   private Factors currentFactors;
   private int totalIterations, width, height, totalColors;
   private int[] colorTable;
-  private BufferedImage I, QI;
-  private MainCanvas canvas;
-  private static final Dimension[] quadrants = {
-    new Dimension(
-      400,
-      0
-    ),
-    new Dimension(
-      0,
-      0
-    ),
-    new Dimension(
-      0,
-      400
-    ),
-    new Dimension(
-      400,
-      400
-    )
-  };
+  private BufferedImage QI;
+  private ArrayBlockingQueue<ProgressMessage> q;
   
-  Renderer(int id, Ranges r, int w, int h, int ti, int tc, int[] ct, BufferedImage bi, BufferedImage qi, MainCanvas mc){
-    this.setValues(id, r, w, h, ti, tc, ct, bi, qi, mc);
+  Renderer(int id, Ranges r, int w, int h, int ti, int tc, int[] ct, BufferedImage qi, ArrayBlockingQueue<ProgressMessage> q){
+    this.setValues(id, r, w, h, ti, tc, ct, qi, q);
   }
   
-  final void setValues(int id, Ranges r, int w, int h, int ti, int tc, int[] ct, BufferedImage bi, BufferedImage qi, MainCanvas mc){
+  private void setValues(int id, Ranges r, int w, int h, int ti, int tc, int[] ct, BufferedImage qi, ArrayBlockingQueue<ProgressMessage> q){
     this.id = id;
     this.currentRanges = r;
     this.width = w;
@@ -44,14 +27,12 @@ public class Renderer implements Runnable{
     this.totalIterations = ti;
     this.totalColors = tc;
     this.colorTable = ct;
-    this.I = bi;
     this.QI = qi;
-    this.canvas = mc;
+    this.q = q;
   }
 
   public void renderFrame() {
     currentFactors = calculateFactors(currentRanges, width, height);
-    Graphics g = canvas.getGraphics();
 
     long startTime = System.currentTimeMillis();
 
@@ -76,13 +57,17 @@ public class Renderer implements Runnable{
           QI.setRGB(i, j, 0x000000);
         }
       }
+      try{
+        this.q.add(new ProgressMessage(ProgressMessage.TYPE_PROGRESS, id, null, i));
+      }catch(Exception e){
+        
+      }
     }
     
     long endTime = System.currentTimeMillis();
     long elapsedTime = endTime - startTime;
     System.out.println("Rendering took " + elapsedTime);
-    I.getGraphics().drawImage(QI, quadrants[id].width, quadrants[id].height, null);
-    canvas.paint(g);
+    this.q.add(new ProgressMessage(ProgressMessage.TYPE_DONE, id, QI, width));
   }
 
   private static Complex iterate(Complex z, Complex c) {
