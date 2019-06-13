@@ -1,7 +1,5 @@
 package mandeljava;
 
-import java.awt.Dimension;
-import java.awt.Graphics;
 import java.awt.image.BufferedImage;
 import java.util.concurrent.ArrayBlockingQueue;
 
@@ -14,12 +12,14 @@ public class Renderer implements Runnable{
   private int[] colorTable;
   private BufferedImage QI;
   private ArrayBlockingQueue<ProgressMessage> q;
+  private boolean isJulia;
+  private Complex juliaCenter;
   
-  Renderer(int id, Ranges r, int w, int h, int ti, int tc, int[] ct, BufferedImage qi, ArrayBlockingQueue<ProgressMessage> q){
-    this.setValues(id, r, w, h, ti, tc, ct, qi, q);
+  Renderer(int id, Ranges r, int w, int h, int ti, int tc, int[] ct, BufferedImage qi, ArrayBlockingQueue<ProgressMessage> q, boolean j, Complex jc){
+    this.setValues(id, r, w, h, ti, tc, ct, qi, q, j, jc);
   }
   
-  private void setValues(int id, Ranges r, int w, int h, int ti, int tc, int[] ct, BufferedImage qi, ArrayBlockingQueue<ProgressMessage> q){
+  private void setValues(int id, Ranges r, int w, int h, int ti, int tc, int[] ct, BufferedImage qi, ArrayBlockingQueue<ProgressMessage> q, boolean j, Complex jc){
     this.id = id;
     this.currentRanges = r;
     this.width = w;
@@ -29,6 +29,8 @@ public class Renderer implements Runnable{
     this.colorTable = ct;
     this.QI = qi;
     this.q = q;
+    this.isJulia = j;
+    this.juliaCenter = jc;
   }
 
   public void renderFrame() {
@@ -44,6 +46,45 @@ public class Renderer implements Runnable{
         int completedIterations = 0;
         for (int k = 0; k < totalIterations; k++) {
           Complex result = iterate(z, iteratee);
+          completedIterations++;
+          if (result.abs() > 2.0d) {
+            outOfBounds = true;
+            break;
+          }
+          z = result;
+        }
+        if (outOfBounds) {
+          QI.setRGB(i, j, colorTable[(completedIterations - 1) % totalColors]);
+        } else {
+          QI.setRGB(i, j, 0x000000);
+        }
+      }
+      try{
+        this.q.add(new ProgressMessage(ProgressMessage.TYPE_PROGRESS, id, null, i));
+      }catch(Exception e){
+        
+      }
+    }
+    
+    long endTime = System.currentTimeMillis();
+    long elapsedTime = endTime - startTime;
+    System.out.println("Rendering took " + elapsedTime);
+    this.q.add(new ProgressMessage(ProgressMessage.TYPE_DONE, id, QI, width));
+  }
+  
+  public void renderJulia() {
+    currentFactors = calculateFactors(currentRanges, width, height);
+
+    long startTime = System.currentTimeMillis();
+
+    for (int i = 0; i < width; ++i) {
+      for (int j = 0; j < height; ++j) {
+        Complex z = Main.translatePixelToComplex(i, j, currentFactors);
+        boolean outOfBounds = false;
+        Complex c = juliaCenter;
+        int completedIterations = 0;
+        for (int k = 0; k < totalIterations; k++) {
+          Complex result = iterate(z, c);
           completedIterations++;
           if (result.abs() > 2.0d) {
             outOfBounds = true;
@@ -85,6 +126,10 @@ public class Renderer implements Runnable{
 
   @Override
   public void run() {
-    this.renderFrame();
+    if(this.isJulia){
+      this.renderJulia();
+    }else{
+      this.renderFrame();
+    }
   }
 }

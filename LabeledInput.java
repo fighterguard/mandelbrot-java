@@ -1,8 +1,3 @@
-/*
- * To change this license header, choose License Headers in Project Properties.
- * To change this template file, choose Tools | Templates
- * and open the template in the editor.
- */
 package mandeljava;
 
 import java.awt.Dimension;
@@ -11,10 +6,6 @@ import java.awt.TextField;
 import javax.swing.JLabel;
 import javax.swing.SwingConstants;
 
-/**
- *
- * @author Adrian
- */
 public class LabeledInput extends Panel {
 
   private final JLabel label;
