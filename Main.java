@@ -32,6 +32,9 @@ class Main {
   static double centerX = 0;//-0.743643887037151;//-0.1529051455399985; //-0.5803827923341388d;
   static double centerY = 0;//0.131825904205330;//1.039718512720433; //-0.652903457310135d;
   static double radius = 2;//0.000000000051299 //7.120538316886522e-10;
+  static int divisionsPerSide = 16;
+  static int totalDivisions = divisionsPerSide * divisionsPerSide;
+  static int quadrantSide = X / divisionsPerSide;
   static int selectedColorIndex;
   static int startingIterationsValue = 400;
   static int finalIterationsValue = 800;
@@ -50,39 +53,12 @@ class Main {
   static Factors currentFactors;
   static MainCanvas canvas = new MainCanvas();
   static int fileCounter = 1;
-  static ArrayBlockingQueue<ProgressMessage> threadCompletionQueue = new ArrayBlockingQueue<ProgressMessage>(100);
-  static boolean[] threadsFinished = {false, false, false, false};
+  static ArrayBlockingQueue<ProgressMessage> threadCompletionQueue = new ArrayBlockingQueue<ProgressMessage>(100000);
+  static boolean[] threadsFinished = new boolean[totalDivisions];
   static final ArrayList<int[]> startingColors = new ArrayList<int[]>();
-  static BufferedImage[] quadrantImages = {
-    new BufferedImage(400, 400, BufferedImage.TYPE_INT_RGB),
-    new BufferedImage(400, 400, BufferedImage.TYPE_INT_RGB),
-    new BufferedImage(400, 400, BufferedImage.TYPE_INT_RGB),
-    new BufferedImage(400, 400, BufferedImage.TYPE_INT_RGB)
-  };
-  private static final Dimension[] quadrants = {
-    new Dimension(
-      400,
-      0
-    ),
-    new Dimension(
-      0,
-      0
-    ),
-    new Dimension(
-      0,
-      400
-    ),
-    new Dimension(
-      400,
-      400
-    )
-  };
-  private static final Ranges[] juliaRanges = {
-    new Ranges(0,2,0,2),
-    new Ranges(-2,0,0,2),
-    new Ranges(-2,0,-2,0),
-    new Ranges(0,2,-2,0)
-  };
+  static BufferedImage[] quadrantImages;
+  private static Dimension[] quadrants;
+  private static Ranges[] juliaRanges;
 
   //Components
   private static final LabeledInput centerXInput = new LabeledInput("Real Part");
@@ -106,7 +82,7 @@ class Main {
   private static final Button removeColorButton = new Button("Remove");
   private static final Button addNewColorButton = new Button("Add New");
   private static final Button applyColorsButton = new Button("Apply Colors");
-  private static final JProgressBar progressBar = new JProgressBar(0, 1600);
+  private static final JProgressBar progressBar = new JProgressBar(0, quadrantSide * totalDivisions);
   private static final ColorSlider redSlider = new ColorSlider("Red", 0, 255, 255);
   private static final ColorSlider greenSlider = new ColorSlider("Green", 0, 255, 255);
   private static final ColorSlider blueSlider = new ColorSlider("Blue", 0, 255, 255);
@@ -120,6 +96,11 @@ class Main {
   
   //Methods
   static public void main(String[] args) {
+    quadrantImages = new BufferedImage[totalDivisions];
+    for (int i = 0; i < totalDivisions; i++) {
+      quadrantImages[i] = new BufferedImage(quadrantSide, quadrantSide, BufferedImage.TYPE_INT_RGB);
+    }
+    juliaRanges = calculateQuadrantRanges(centerX, centerY, radius, divisionsPerSide);
     startingColors.add(new int[]{0, 0, 255}); // blue
     startingColors.add(new int[]{255, 255, 255}); // white
     startingColors.add(new int[]{255, 170, 0}); // orange
@@ -192,7 +173,9 @@ class Main {
     Action updateFrame = new AbstractAction() {
       @Override
       public void actionPerformed(ActionEvent e) {
-        Main.updateFrame();
+        if(Main.updateButton.isEnabled()){
+          Main.updateFrame();
+        }
       }
     };
     inputMap.put(KeyStroke.getKeyStroke("ENTER"), "enterPressed");
@@ -343,6 +326,7 @@ class Main {
   }
   
   private static void updateFrame(){
+    updateButton.setEnabled(false);
     centerX = Double.parseDouble(centerXInput.getText());
     centerY = Double.parseDouble(centerYInput.getText());
     radius = Double.parseDouble(radiusInput.getText());
@@ -385,7 +369,7 @@ class Main {
   
   private static void renderDone(){
     canvas.paint(canvas.getGraphics());
-    progressBar.setValue(1600);
+    progressBar.setValue(totalDivisions * quadrantSide);
     resetThreadCompletion();
     System.out.println("Rendering done!!!");
     if(saveEachValue){
@@ -394,6 +378,7 @@ class Main {
     if(animatingValue && !stopAnimationValue){
       renderNextAnimation();
     }
+    updateButton.setEnabled(true);
   }
   
   private static void renderNextAnimation(){
@@ -416,13 +401,14 @@ class Main {
   private static void renderFrame(){
     currentRanges = calculateRanges(radius, centerX, centerY);
     currentFactors = calculateFactors(currentRanges, X, Y);
-    Ranges[] quadrantRanges = calculateQuadrantRanges(centerX, centerY, radius);
+    Ranges[] quadrantRanges = calculateQuadrantRanges(centerX, centerY, radius, divisionsPerSide);
+    quadrants = calculateDimensions(divisionsPerSide);
     
     Thread observer;
     observer = new Thread(() -> {
       Graphics g = I.getGraphics();
       boolean done = Main.allThreadsFinished();
-      int[] progress = {0,0,0,0};
+      int[] progress = new int[totalDivisions];
       try{
         while(!done){
           ProgressMessage next = threadCompletionQueue.take();
@@ -432,6 +418,7 @@ class Main {
           }else if(next.type == ProgressMessage.TYPE_DONE){
             Main.markAsComplete(next.id);
             g.drawImage(next.I, quadrants[next.id].width, quadrants[next.id].height, null);
+            canvas.paint(canvas.getGraphics());
           }
           done = Main.allThreadsFinished();
         }
@@ -445,20 +432,18 @@ class Main {
     observer.start();
     for (int i = 0; i < quadrantRanges.length; i++) {
       Ranges quadrantRange = quadrantRanges[i];
-      Renderer renderer = new Renderer(i, quadrantRange, 400, 400, totalIterations, totalColors, colorTable, quadrantImages[i], threadCompletionQueue, false, null);
+      Renderer renderer = new Renderer(i, quadrantRange, quadrantSide, quadrantSide, totalIterations, totalColors, colorTable, quadrantImages[i], threadCompletionQueue, false, null);
       Thread t = new Thread(renderer);
       t.start();
     }
   }
-  
-  
   
   private static void renderJulia(){
     Thread observer;
     observer = new Thread(() -> {
       Graphics g = I.getGraphics();
       boolean done = Main.allThreadsFinished();
-      int[] progress = {0,0,0,0};
+      int[] progress = new int[totalDivisions];
       try{
         while(!done){
           ProgressMessage next = threadCompletionQueue.take();
@@ -481,7 +466,7 @@ class Main {
     observer.start();
     for (int i = 0; i < juliaRanges.length; i++) {
       Ranges quadrantRange = juliaRanges[i];
-      Renderer renderer = new Renderer(i, quadrantRange, 400, 400, totalIterations, totalColors, colorTable, quadrantImages[i], threadCompletionQueue, true, new Complex(centerX, centerY));
+      Renderer renderer = new Renderer(i, quadrantRange, quadrantSide, quadrantSide, totalIterations, totalColors, colorTable, quadrantImages[i], threadCompletionQueue, true, new Complex(centerX, centerY));
       Thread t = new Thread(renderer);
       t.start();
     }
@@ -506,42 +491,55 @@ class Main {
     return factors;
   }
 
-    private static void calculateZoomAndDetailFactors(){
-      finalRadiusValue = Double.parseDouble(finalRadius.getText());
-      startingRadiusValue = Double.parseDouble(startingRadius.getText());
-      finalIterationsValue = Integer.parseInt(finalIterations.getText());
-      startingIterationsValue = Integer.parseInt(startingIterations.getText());
-      stepsValue = Integer.parseInt(steps.getText());
-      zoomFactor = Math.pow(finalRadiusValue / startingRadiusValue, (1.0d / (double)stepsValue));
-      detailFactor = Math.pow(finalIterationsValue / startingIterationsValue, (1.0d / (double)stepsValue));
+  private static void calculateZoomAndDetailFactors(){
+    finalRadiusValue = Double.parseDouble(finalRadius.getText());
+    startingRadiusValue = Double.parseDouble(startingRadius.getText());
+    finalIterationsValue = Integer.parseInt(finalIterations.getText());
+    startingIterationsValue = Integer.parseInt(startingIterations.getText());
+    stepsValue = Integer.parseInt(steps.getText());
+    zoomFactor = Math.pow(finalRadiusValue / startingRadiusValue, (1.0d / (double)stepsValue));
+    detailFactor = Math.pow(finalIterationsValue / startingIterationsValue, (1.0d / (double)stepsValue));
+  }
+  
+  private static Dimension[] calculateDimensions(int d){
+    int totalDimensions = d*d;
+    int index = 0;
+    int step = X/d;
+    int minX = 0;
+    int minY = 0;
+    Dimension[] dims = new Dimension[totalDimensions];
+    
+    for (int i = 0; i < d; i++) {
+      for (int j = 0; j < d; j++) {
+        dims[index] = new Dimension(
+          minX + (j * step),
+          minY + (i * step)
+        );
+        index++;
+      }
     }
+    return dims;
+  }
 
-  private static Ranges[] calculateQuadrantRanges(double x, double y, double r) {
-    Ranges[] ranges = new Ranges[4];
-    ranges[0] = new Ranges(
-      x,
-      x + r,
-      y,
-      y + r
-    );
-    ranges[1] = new Ranges(
-      x - r,
-      x,
-      y,
-      y + r
-    );
-    ranges[2] = new Ranges(
-      x - r,
-      x,
-      y - r,
-      y
-    );
-    ranges[3] = new Ranges(
-      x,
-      x + r,
-      y - r,
-      y
-    );
+  private static Ranges[] calculateQuadrantRanges(double x, double y, double r, int d) {
+    int totalRanges = d*d;
+    int index = 0;
+    double step = (2 * r)/d;
+    double minX = x - r;
+    double minY = y - r;
+    Ranges[] ranges = new Ranges[totalRanges];
+    
+    for (int i = d; i > 0; i--) {
+      for (int j = 0; j < d; j++) {
+        ranges[index] = new Ranges(
+          minX + (j * step),
+          minX + ((j + 1) * step),
+          minY + ((i - 1) * step),
+          minY + (i * step)
+        );
+        index++;
+      }
+    }
     return ranges;
   }
 
